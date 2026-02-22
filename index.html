@@ -186,6 +186,28 @@
 
                     csvData = results.data.filter(row => row['Tipe'] && row['Isi']);
                     
+                    // --- FITUR AUTO-SORT (Urutkan Data Otomatis) ---
+                    csvData.sort((a, b) => {
+                        // 1. Ekstrak angka hari untuk diurutkan (Day 01, Day 02, dst)
+                        let numA = parseInt((a['Hari'] || '').match(/\d+/) || [0], 10);
+                        let numB = parseInt((b['Hari'] || '').match(/\d+/) || [0], 10);
+                        
+                        // Jika angkanya beda, urutkan dari hari terkecil ke terbesar
+                        if (numA !== numB) {
+                            return numA - numB;
+                        }
+                        
+                        // 2. Jika harinya sama, pastikan Pertanyaan (Q/C/I) muncul sebelum Jawaban (A)
+                        function getTipeWeight(tipe) {
+                            let t = (tipe || '').toUpperCase();
+                            if (t === 'Q' || t === 'C' || t === 'I') return 1; // Prioritas Pertama
+                            if (t === 'A') return 2; // Prioritas Kedua
+                            return 3;
+                        }
+                        
+                        return getTipeWeight(a['Tipe']) - getTipeWeight(b['Tipe']);
+                    });
+         y
                     if (csvData.length > 0) {
                         uniqueDays = [...new Set(csvData.map(row => row['Hari']))];
                         
@@ -404,4 +426,5 @@
         }
     </script>
 </body>
+
 </html>
