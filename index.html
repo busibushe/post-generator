@@ -33,12 +33,21 @@
         .preview-container { flex: 1; display: flex; justify-content: center; align-items: center; background: #222; padding: 20px; border-radius: 12px; overflow: auto; }
 
         /* CANVAS STYLES */
-        #canvas-target {
+        /* #canvas-target {
             position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 20px 50px rgba(0,0,0,0.5); transition: all 0.3s ease; background: white;
         }
 
         .size-post { width: 432px; height: 540px; }
-        .size-story { width: 337.5px; height: 600px; }
+        .size-story { width: 337.5px; height: 600px; } */
+        /* CANVAS STYLES */
+        #canvas-target {
+            position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 20px 50px rgba(0,0,0,0.5); transition: all 0.3s ease; background: white;
+            flex-shrink: 0; /* Mencegah kanvas penyok di layar HP */
+        }
+
+        /* Tambahkan !important agar ukurannya mutlak tidak bisa diganggu gugat */
+        .size-post { width: 432px !important; height: 540px !important; }
+        .size-story { width: 337.5px !important; height: 600px !important; }
 
         .decorative-arch { 
             position: absolute; top: 25px; left: 25px; right: 25px; bottom: 0; 
@@ -872,3 +881,4 @@
 </html>
 
  -->
+
