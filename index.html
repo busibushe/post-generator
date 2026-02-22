@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ramadan Batch Generator (Auto-Sync)</title>
+    <title>Ramadan Batch Generator (Auto-Sync & Filter Preview)</title>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Lato:wght@300;400;700&family=Amiri:ital@0;1&display=swap" rel="stylesheet">
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
@@ -83,11 +83,11 @@
         <div id="filter-range" class="filter-section">
             <label style="font-weight: bold; font-size: 12px; display: block; margin-bottom: 8px; color: #555;">Pilih Hari yang Di-Export:</label>
             <div style="display: flex; gap: 8px; align-items: center;">
-                <select id="start-day" class="filter-select"></select>
+                <select id="start-day" class="filter-select" onchange="updateFilteredData()"></select>
                 <span style="font-size: 12px; color: #888;">s/d</span>
-                <select id="end-day" class="filter-select"></select>
+                <select id="end-day" class="filter-select" onchange="updateFilteredData()"></select>
             </div>
-            <div style="font-size: 10px; color: #888; margin-top: 5px; text-align: center;">(Otomatis diset ke hari terbaru)</div>
+            <div style="font-size: 10px; color: #888; margin-top: 5px; text-align: center;">(Preview akan menyesuaikan rentang ini)</div>
         </div>
 
         <div id="preview-nav" class="filter-section" style="margin-top: 10px;">
@@ -136,6 +136,7 @@
         };
 
         let csvData = [];
+        let filteredData = []; // Array baru khusus untuk menyimpan data yang lolos filter
         let uniqueDays = []; 
         let isProcessing = false;
         let currentIndex = 0;
@@ -144,17 +145,13 @@
         const canvas = document.getElementById('canvas-target');
         const syncBox = document.getElementById('sync-status');
 
-        // Jalankan fungsi otomatis saat web dibuka
         window.onload = function() {
             fetchSpreadsheetData();
         };
 
         function fetchSpreadsheetData() {
             if(SPREADSHEET_CSV_URL === "ISI_DENGAN_LINK_CSV_KAMU_DISINI") {
-                syncBox.style.background = "#f8d7da";
-                syncBox.style.color = "#721c24";
-                syncBox.innerHTML = "⚠️ Setup Error: Kamu belum memasukkan Link CSV Google Sheets di dalam kode HTML.";
-                statusLog.innerText = "Gagal memuat. Periksa kode HTML.";
+                showError("⚠️ Setup Error: Kamu belum memasukkan Link CSV Google Sheets di dalam kode HTML.");
                 return;
             }
 
@@ -163,7 +160,6 @@
             syncBox.style.color = "#856404";
             document.getElementById('btnRefresh').style.display = 'none';
 
-            // PapaParse bisa langsung membaca dari URL
             Papa.parse(SPREADSHEET_CSV_URL, {
                 download: true,
                 header: true,
@@ -188,26 +184,25 @@
                     
                     // --- FITUR AUTO-SORT (Urutkan Data Otomatis) ---
                     csvData.sort((a, b) => {
-                        // 1. Ekstrak angka hari untuk diurutkan (Day 01, Day 02, dst)
                         let numA = parseInt((a['Hari'] || '').match(/\d+/) || [0], 10);
                         let numB = parseInt((b['Hari'] || '').match(/\d+/) || [0], 10);
                         
-                        // Jika angkanya beda, urutkan dari hari terkecil ke terbesar
                         if (numA !== numB) {
                             return numA - numB;
                         }
                         
-                        // 2. Jika harinya sama, pastikan Pertanyaan (Q/C/I) muncul sebelum Jawaban (A)
                         function getTipeWeight(tipe) {
                             let t = (tipe || '').toUpperCase();
-                            if (t === 'Q' || t === 'C' || t === 'I') return 1; // Prioritas Pertama
-                            if (t === 'A') return 2; // Prioritas Kedua
+                            if (t === 'Q' || t === 'C' || t === 'I') return 1; 
+                            if (t === 'A') return 2; 
                             return 3;
                         }
                         
                         return getTipeWeight(a['Tipe']) - getTipeWeight(b['Tipe']);
                     });
-         y
+                    
+                    // ERROR HURUF 'y' YANG LAMA SUDAH DIHAPUS DI SINI
+                    
                     if (csvData.length > 0) {
                         uniqueDays = [...new Set(csvData.map(row => row['Hari']))];
                         
@@ -228,7 +223,7 @@
                         document.getElementById('filter-range').style.display = 'block';
                         document.getElementById('preview-nav').style.display = 'block';
                         
-                        syncBox.innerHTML = `✅ Terhubung! (${csvData.length} data ditemukan)`;
+                        syncBox.innerHTML = `✅ Terhubung! (${csvData.length} total data)`;
                         syncBox.style.background = "#d4edda";
                         syncBox.style.color = "#155724";
                         
@@ -236,9 +231,9 @@
                         document.getElementById('btnGenerate').disabled = false;
                         document.getElementById('btnRefresh').style.display = 'block';
                         
-                        currentIndex = 0;
-                        updateNavUI();
-                        renderPreview(csvData[currentIndex], currentIndex);
+                        // Otomatis jalankan filter agar Preview hanya nampilin hari terakhir
+                        updateFilteredData();
+                        
                     } else {
                         showError("Spreadsheet masih kosong.");
                     }
@@ -250,6 +245,40 @@
             });
         }
 
+        // FUNGSI BARU: Memfilter data saat Dropdown diganti
+        function updateFilteredData() {
+            if (csvData.length === 0) return;
+            
+            let startDay = document.getElementById('start-day').value;
+            let endDay = document.getElementById('end-day').value;
+            
+            let startIndex = uniqueDays.indexOf(startDay);
+            let endIndex = uniqueDays.indexOf(endDay);
+
+            // Tukar posisi jika user pilih dari belakang ke depan
+            if (startIndex > endIndex) {
+                let temp = startIndex;
+                startIndex = endIndex;
+                endIndex = temp;
+            }
+
+            // Simpan hanya data yang ada di dalam rentang yang dipilih ke array filteredData
+            filteredData = csvData.filter(row => {
+                let dayIndex = uniqueDays.indexOf(row['Hari']);
+                return dayIndex >= startIndex && dayIndex <= endIndex;
+            });
+
+            // Reset preview kembali ke halaman 1 dari data yang sudah difilter
+            currentIndex = 0;
+            updateNavUI();
+            if(filteredData.length > 0) {
+                renderPreview(filteredData[currentIndex], currentIndex);
+                document.getElementById('btnGenerate').disabled = false;
+            } else {
+                document.getElementById('btnGenerate').disabled = true;
+            }
+        }
+
         function showError(msg) {
             syncBox.style.background = "#f8d7da";
             syncBox.style.color = "#721c24";
@@ -259,23 +288,30 @@
         }
 
         function updateNavUI() {
-            document.getElementById('slide-counter').innerText = `${currentIndex + 1} / ${csvData.length}`;
+            if(filteredData.length === 0) {
+                document.getElementById('slide-counter').innerText = `0 / 0`;
+                document.getElementById('btnPrev').disabled = true;
+                document.getElementById('btnNext').disabled = true;
+                return;
+            }
+            // Sekarang counter menyesuaikan jumlah data yang difilter, bukan total semua data
+            document.getElementById('slide-counter').innerText = `${currentIndex + 1} / ${filteredData.length}`;
             document.getElementById('btnPrev').disabled = (currentIndex === 0);
-            document.getElementById('btnNext').disabled = (currentIndex === csvData.length - 1);
+            document.getElementById('btnNext').disabled = (currentIndex === filteredData.length - 1);
         }
 
         function prevSlide() {
             if (currentIndex > 0 && !isProcessing) {
                 currentIndex--;
-                renderPreview(csvData[currentIndex], currentIndex);
+                renderPreview(filteredData[currentIndex], currentIndex);
                 updateNavUI();
             }
         }
 
         function nextSlide() {
-            if (currentIndex < csvData.length - 1 && !isProcessing) {
+            if (currentIndex < filteredData.length - 1 && !isProcessing) {
                 currentIndex++;
-                renderPreview(csvData[currentIndex], currentIndex);
+                renderPreview(filteredData[currentIndex], currentIndex);
                 updateNavUI();
             }
         }
@@ -283,7 +319,7 @@
         function updatePreviewDimensions() {
             const sizeClass = document.getElementById('sizeSelect').value;
             canvas.className = sizeClass;
-            if(csvData.length > 0) renderPreview(csvData[currentIndex], currentIndex);
+            if(filteredData.length > 0) renderPreview(filteredData[currentIndex], currentIndex);
         }
 
         function renderPreview(row, index) {
@@ -332,7 +368,7 @@
         }
 
         async function startBatch() {
-            if (isProcessing || csvData.length === 0) return;
+            if (isProcessing || filteredData.length === 0) return;
             isProcessing = true;
             
             const btn = document.getElementById('btnGenerate');
@@ -348,26 +384,21 @@
 
             let startIndex = uniqueDays.indexOf(document.getElementById('start-day').value);
             let endIndex = uniqueDays.indexOf(document.getElementById('end-day').value);
-
-            if (startIndex > endIndex) {
-                let temp = startIndex;
-                startIndex = endIndex;
-                endIndex = temp;
-            }
+            if (startIndex > endIndex) { let temp = startIndex; startIndex = endIndex; endIndex = temp; }
 
             statusLog.innerHTML = `Memulai proses export dari ${uniqueDays[startIndex]} s/d ${uniqueDays[endIndex]}...\n`;
 
-            for (let i = 0; i < csvData.length; i++) {
-                const row = csvData[i];
-                let currentDayIndex = uniqueDays.indexOf(row['Hari']);
-
-                if (currentDayIndex < startIndex || currentDayIndex > endIndex) continue;
+            // SEKARANG HANYA MELOOPING DATA YANG SUDAH DIFILTER (filteredData)
+            for (let i = 0; i < filteredData.length; i++) {
+                const row = filteredData[i];
 
                 currentIndex = i;
                 updateNavUI();
                 renderPreview(row, i);
                 
-                await new Promise(r => setTimeout(r, 150)); 
+                // Jeda bernapas bagi browser untuk mencegah render putih/blank
+                await new Promise(r => requestAnimationFrame(r));
+                await new Promise(r => setTimeout(r, 500)); 
 
                 try {
                     const canvasEl = await html2canvas(canvas, { 
@@ -412,8 +443,6 @@
                 saveAs(content, zipName);
                 
                 statusLog.innerHTML = `🎉 SELESAI! (${successCount} gambar). File ZIP otomatis terunduh.\n` + statusLog.innerHTML;
-            } else {
-                statusLog.innerHTML = `⚠️ Tidak ada data yang sesuai di rentang hari tersebut.\n` + statusLog.innerHTML;
             }
 
             btn.innerText = originalBtnText;
@@ -422,9 +451,8 @@
             
             currentIndex = 0;
             updateNavUI();
-            renderPreview(csvData[0], 0);
+            renderPreview(filteredData[0], 0);
         }
     </script>
 </body>
-
 </html>
