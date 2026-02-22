@@ -216,9 +216,39 @@
                             endSelect.add(new Option(day, day));
                         });
 
-                        const latestDay = uniqueDays[uniqueDays.length - 1];
-                        startSelect.value = latestDay;
-                        endSelect.value = latestDay;
+                        // --- LOGIKA MENCARI HARI TERBARU YANG SUDAH ADA JAWABANNYA ---
+                        let targetLatestDay = uniqueDays[uniqueDays.length - 1]; // Fallback (jaga-jaga)
+
+                        // Cek dari hari paling akhir ke awal
+                        for (let i = uniqueDays.length - 1; i >= 0; i--) {
+                            let day = uniqueDays[i];
+                            // Ambil semua baris di hari ini
+                            let rowsForDay = csvData.filter(row => row['Hari'] === day);
+                            
+                            // Cek apakah ada minimal 1 Q dan 1 A
+                            let hasQ = rowsForDay.some(row => (row['Tipe'] || '').toUpperCase() === 'Q');
+                            let hasA = rowsForDay.some(row => (row['Tipe'] || '').toUpperCase() === 'A');
+                            
+                            // Jika ada keduanya, jadikan ini sebagai default dan stop pencarian
+                            if (hasQ && hasA) {
+                                targetLatestDay = day;
+                                break;
+                            }
+                        }
+
+                        startSelect.value = targetLatestDay;
+                        endSelect.value = targetLatestDay;
+                        // -------------------------------------------------------------
+
+                        // document.getElementById('filter-range').style.display = 'block';
+                        // uniqueDays.forEach(day => {
+                        //     startSelect.add(new Option(day, day));
+                        //     endSelect.add(new Option(day, day));
+                        // });
+
+                        // const latestDay = uniqueDays[uniqueDays.length - 1];
+                        // startSelect.value = latestDay;
+                        // endSelect.value = latestDay;
 
                         document.getElementById('filter-range').style.display = 'block';
                         document.getElementById('preview-nav').style.display = 'block';
@@ -456,3 +486,4 @@
     </script>
 </body>
 </html>
+
