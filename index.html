@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ramadan Batch Generator (Auto-Sync)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Lato:wght@300;400;700&family=Amiri:ital@0;1&display=swap" rel="stylesheet">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+    <style>
+        body { font-family: 'Lato', sans-serif; background: #e9ecef; margin: 0; padding: 20px; display: flex; gap: 20px; height: 100vh; box-sizing: border-box; }
+        
+        /* SIDEBAR */
+        .sidebar { width: 320px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: flex; flex-direction: column; overflow-y: auto;}
+        h2 { font-family: 'Cinzel', serif; color: #333; margin-top: 0; font-size: 1.2rem; }
+        
+        .sync-box { padding: 15px; text-align: center; border-radius: 8px; margin-bottom: 20px; background: #f0f8ff; border: 1px solid #cce5ff; color: #004085; font-size: 14px; font-weight: bold;}
+        
+        button { width: 100%; padding: 12px; background: #2b2b2b; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px; transition: 0.2s; font-size: 14px;}
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        button.btn-zip { background: #5c6c5c; }
+        button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+
+        .nav-btn { width: auto; padding: 8px 15px; background: #eee; color: #333; margin: 0; }
+        .nav-btn:hover:not(:disabled) { background: #ddd; }
+
+        .status-log { margin-top: 20px; font-size: 12px; color: #555; flex: 1; overflow-y: auto; background: #f4f4f4; padding: 12px; border-radius: 6px; white-space: pre-wrap; line-height: 1.5; border: 1px solid #eee; min-height: 100px; }
+
+        /* PREVIEW AREA */
+        .preview-container { flex: 1; display: flex; justify-content: center; align-items: center; background: #222; padding: 20px; border-radius: 12px; overflow: auto; }
+
+        /* CANVAS STYLES */
+        #canvas-target {
+            position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 20px 50px rgba(0,0,0,0.5); transition: all 0.3s ease;
+        }
+
+        .size-post { width: 432px; height: 540px; }
+        .size-story { width: 337.5px; height: 600px; }
+
+        .decorative-arch { 
+            position: absolute; top: 25px; left: 25px; right: 25px; bottom: 0; 
+            border: 1px solid currentColor; border-bottom: none; border-radius: 200px 200px 0 0; pointer-events: none;
+        }
+        .ramadan-tag { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 3px; text-transform: uppercase; text-align: center; margin-top: 45px; opacity: 0.7; font-weight: 600;}
+        
+        .content-wrapper { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 50px; text-align: center; z-index: 2; }
+        .footer { padding: 25px; text-align: center; font-family: 'Cinzel', serif; font-size: 10px; opacity: 0.5; letter-spacing: 2px; }
+
+        .day-text { font-family: 'Amiri', serif; font-style: italic; font-size: 16px; margin-bottom: 20px; opacity: 0.8; }
+        .main-text { font-family: 'Cinzel', serif; font-size: 34px; line-height: 1.25; font-weight: 700; }
+        .answer-text { font-family: 'Amiri', serif; font-size: 30px; line-height: 1.45; }
+
+        /* TIPOGRAFI CUSTOM POST */
+        .custom-title { font-family: 'Cinzel', serif; font-size: 26px; font-weight: 700; margin-bottom: 20px; letter-spacing: 2px; text-transform: uppercase; border-bottom: 1px solid currentColor; padding-bottom: 10px; display: inline-block; align-self: center;}
+        .custom-body { font-family: 'Lato', sans-serif; font-size: 20px; line-height: 1.6; text-align: center; white-space: pre-wrap; opacity: 0.9;}
+
+        /* Filter Range Section */
+        .filter-section { margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd; display: none; }
+        .filter-select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ccc; font-family: inherit; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2>🌙 Batch Generator</h2>
+        
+        <div id="sync-status" class="sync-box">
+            🔄 Mengambil data dari Google Sheets...
+        </div>
+
+        <div>
+            <label style="font-weight: bold; font-size: 12px; display: block; margin-bottom: 5px; color: #555;">Format Output:</label>
+            <select id="sizeSelect" style="width:100%; padding:10px; border-radius: 6px; border: 1px solid #ccc; font-family: inherit;" onchange="updatePreviewDimensions()">
+                <option value="size-post">Instagram Post (4:5)</option>
+                <option value="size-story">Instagram Story (9:16)</option>
+            </select>
+        </div>
+
+        <div id="filter-range" class="filter-section">
+            <label style="font-weight: bold; font-size: 12px; display: block; margin-bottom: 8px; color: #555;">Pilih Hari yang Di-Export:</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <select id="start-day" class="filter-select"></select>
+                <span style="font-size: 12px; color: #888;">s/d</span>
+                <select id="end-day" class="filter-select"></select>
+            </div>
+            <div style="font-size: 10px; color: #888; margin-top: 5px; text-align: center;">(Otomatis diset ke hari terbaru)</div>
+        </div>
+
+        <div id="preview-nav" class="filter-section" style="margin-top: 10px;">
+            <label style="font-weight: bold; font-size: 12px; display: block; margin-bottom: 8px; color: #555; text-align: center;">Cek Preview Slide:</label>
+            <div style="display:flex; gap:10px; justify-content:center; align-items:center;">
+                <button class="nav-btn" id="btnPrev" onclick="prevSlide()">⬅️</button>
+                <span id="slide-counter" style="font-size:14px; font-weight:bold; width:80px; text-align:center;">0 / 0</span>
+                <button class="nav-btn" id="btnNext" onclick="nextSlide()">➡️</button>
+            </div>
+        </div>
+
+        <button id="btnGenerate" class="btn-zip" onclick="startBatch()" disabled>🚀 Generate Images (.ZIP)</button>
+        <button id="btnRefresh" onclick="fetchSpreadsheetData()" style="background: #e9ecef; color:#333; border:1px solid #ccc; display:none;">🔄 Muat Ulang Data</button>
+        
+        <div id="status" class="status-log">Menunggu sinkronisasi data...</div>
+    </div>
+
+    <div class="preview-container">
+        <div id="canvas-target" class="size-post">
+            <div class="decorative-arch"></div>
+            <div class="ramadan-tag">Ramadan Stories</div>
+            
+            <div class="content-wrapper">
+                <div id="el-day" class="day-text">Day 01</div>
+                <div id="el-question" class="main-text">Memuat Pertanyaan...</div>
+                <div id="el-answer" class="answer-text" style="display:none;">Memuat Jawaban...</div>
+                
+                <div id="el-custom-title" class="custom-title" style="display:none;">INFO</div>
+                <div id="el-custom-body" class="custom-body" style="display:none;">...</div>
+            </div>
+
+            <div class="footer">30 Hari Bercerita</div>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 🛑 PASTE LINK PUBLIK CSV GOOGLE SHEETS KAMU DI BAWAH INI:
+        // =========================================================================
+        const SPREADSHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOMyvtZNOySlXySTUzVxFFq4EIBYAmtFYDKx34Nv4ZewbxRtaLgvx3FP_uOxgg1lRBVKaK68Z9Y80s/pub?gid=1259148186&single=true&output=csv"; 
+        
+        // Tema Warna (Ganjil Terang, Genap Gelap)
+        const THEMES = {
+            'v1': { bg: '#FAF5EF', text: '#4A3525', archOpacity: 0.15 }, 
+            'v2': { bg: '#36413A', text: '#F2F5F3', archOpacity: 0.15 }  
+        };
+
+        let csvData = [];
+        let uniqueDays = []; 
+        let isProcessing = false;
+        let currentIndex = 0;
+
+        const statusLog = document.getElementById('status');
+        const canvas = document.getElementById('canvas-target');
+        const syncBox = document.getElementById('sync-status');
+
+        // Jalankan fungsi otomatis saat web dibuka
+        window.onload = function() {
+            fetchSpreadsheetData();
+        };
+
+        function fetchSpreadsheetData() {
+            if(SPREADSHEET_CSV_URL === "ISI_DENGAN_LINK_CSV_KAMU_DISINI") {
+                syncBox.style.background = "#f8d7da";
+                syncBox.style.color = "#721c24";
+                syncBox.innerHTML = "⚠️ Setup Error: Kamu belum memasukkan Link CSV Google Sheets di dalam kode HTML.";
+                statusLog.innerText = "Gagal memuat. Periksa kode HTML.";
+                return;
+            }
+
+            syncBox.innerHTML = "🔄 Mengambil data realtime...";
+            syncBox.style.background = "#fff3cd";
+            syncBox.style.color = "#856404";
+            document.getElementById('btnRefresh').style.display = 'none';
+
+            // PapaParse bisa langsung membaca dari URL
+            Papa.parse(SPREADSHEET_CSV_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    const requiredFields = ['Tipe', 'Hari', 'Isi'];
+                    const headers = results.meta.fields;
+                    
+                    if (!headers) {
+                        showError("Tidak dapat membaca header. Pastikan link adalah link CSV, bukan link sheet biasa.");
+                        return;
+                    }
+
+                    const isValid = requiredFields.every(field => headers.includes(field));
+
+                    if (!isValid) {
+                        showError("Format CSV salah. Pastikan kolom: Tipe, Hari, Isi tersedia.");
+                        return;
+                    }
+
+                    csvData = results.data.filter(row => row['Tipe'] && row['Isi']);
+                    
+                    if (csvData.length > 0) {
+                        uniqueDays = [...new Set(csvData.map(row => row['Hari']))];
+                        
+                        const startSelect = document.getElementById('start-day');
+                        const endSelect = document.getElementById('end-day');
+                        startSelect.innerHTML = '';
+                        endSelect.innerHTML = '';
+
+                        uniqueDays.forEach(day => {
+                            startSelect.add(new Option(day, day));
+                            endSelect.add(new Option(day, day));
+                        });
+
+                        const latestDay = uniqueDays[uniqueDays.length - 1];
+                        startSelect.value = latestDay;
+                        endSelect.value = latestDay;
+
+                        document.getElementById('filter-range').style.display = 'block';
+                        document.getElementById('preview-nav').style.display = 'block';
+                        
+                        syncBox.innerHTML = `✅ Terhubung! (${csvData.length} data ditemukan)`;
+                        syncBox.style.background = "#d4edda";
+                        syncBox.style.color = "#155724";
+                        
+                        statusLog.innerText = `Data terbaru siap di-generate.`;
+                        document.getElementById('btnGenerate').disabled = false;
+                        document.getElementById('btnRefresh').style.display = 'block';
+                        
+                        currentIndex = 0;
+                        updateNavUI();
+                        renderPreview(csvData[currentIndex], currentIndex);
+                    } else {
+                        showError("Spreadsheet masih kosong.");
+                    }
+                },
+                error: function(err) {
+                    showError("Gagal mengambil data. Pastikan Google Sheet sudah di-Publish to Web.");
+                    console.error(err);
+                }
+            });
+        }
+
+        function showError(msg) {
+            syncBox.style.background = "#f8d7da";
+            syncBox.style.color = "#721c24";
+            syncBox.innerHTML = "❌ " + msg;
+            statusLog.innerText = msg;
+            document.getElementById('btnRefresh').style.display = 'block';
+        }
+
+        function updateNavUI() {
+            document.getElementById('slide-counter').innerText = `${currentIndex + 1} / ${csvData.length}`;
+            document.getElementById('btnPrev').disabled = (currentIndex === 0);
+            document.getElementById('btnNext').disabled = (currentIndex === csvData.length - 1);
+        }
+
+        function prevSlide() {
+            if (currentIndex > 0 && !isProcessing) {
+                currentIndex--;
+                renderPreview(csvData[currentIndex], currentIndex);
+                updateNavUI();
+            }
+        }
+
+        function nextSlide() {
+            if (currentIndex < csvData.length - 1 && !isProcessing) {
+                currentIndex++;
+                renderPreview(csvData[currentIndex], currentIndex);
+                updateNavUI();
+            }
+        }
+
+        function updatePreviewDimensions() {
+            const sizeClass = document.getElementById('sizeSelect').value;
+            canvas.className = sizeClass;
+            if(csvData.length > 0) renderPreview(csvData[currentIndex], currentIndex);
+        }
+
+        function renderPreview(row, index) {
+            const elDay = document.getElementById('el-day');
+            const elQuestion = document.getElementById('el-question');
+            const elAnswer = document.getElementById('el-answer');
+            const elCustomTitle = document.getElementById('el-custom-title');
+            const elCustomBody = document.getElementById('el-custom-body');
+            const arch = canvas.querySelector('.decorative-arch');
+
+            let dayNum = 1; 
+            if (row['Hari']) {
+                const match = row['Hari'].match(/\d+/);
+                if (match) dayNum = parseInt(match[0], 10);
+            }
+            const themeKey = (dayNum % 2 !== 0) ? 'v1' : 'v2';
+            const tipe = (row['Tipe'] || '').toUpperCase();
+
+            elDay.style.display = 'none';
+            elQuestion.style.display = 'none';
+            elAnswer.style.display = 'none';
+            elCustomTitle.style.display = 'none';
+            elCustomBody.style.display = 'none';
+
+            if (tipe === 'Q') {
+                elDay.style.display = 'block';
+                elDay.innerText = row['Hari'] || '';
+                elQuestion.style.display = 'block';
+                elQuestion.innerText = row['Isi'];
+            } else if (tipe === 'C' || tipe === 'I') {
+                elCustomTitle.style.display = 'inline-block';
+                elCustomBody.style.display = 'block';
+                elCustomTitle.innerText = row['Penulis'] || 'INFO';
+                elCustomBody.innerText = row['Isi'];
+            } else {
+                elDay.style.display = 'block';
+                elDay.innerText = row['Hari'] || '';
+                elAnswer.style.display = 'block';
+                elAnswer.innerText = row['Isi'];
+            }
+
+            const theme = THEMES[themeKey];
+            canvas.style.backgroundColor = theme.bg;
+            canvas.style.color = theme.text;
+            arch.style.opacity = theme.archOpacity;
+        }
+
+        async function startBatch() {
+            if (isProcessing || csvData.length === 0) return;
+            isProcessing = true;
+            
+            const btn = document.getElementById('btnGenerate');
+            const originalBtnText = btn.innerText;
+            btn.innerText = "⏳ Memproses (Jangan Tutup Tab)...";
+            btn.disabled = true;
+            document.getElementById('btnPrev').disabled = true;
+            document.getElementById('btnNext').disabled = true;
+
+            const zip = new JSZip();
+            let successCount = 0;
+            let failCount = 0;
+
+            let startIndex = uniqueDays.indexOf(document.getElementById('start-day').value);
+            let endIndex = uniqueDays.indexOf(document.getElementById('end-day').value);
+
+            if (startIndex > endIndex) {
+                let temp = startIndex;
+                startIndex = endIndex;
+                endIndex = temp;
+            }
+
+            statusLog.innerHTML = `Memulai proses export dari ${uniqueDays[startIndex]} s/d ${uniqueDays[endIndex]}...\n`;
+
+            for (let i = 0; i < csvData.length; i++) {
+                const row = csvData[i];
+                let currentDayIndex = uniqueDays.indexOf(row['Hari']);
+
+                if (currentDayIndex < startIndex || currentDayIndex > endIndex) continue;
+
+                currentIndex = i;
+                updateNavUI();
+                renderPreview(row, i);
+                
+                await new Promise(r => setTimeout(r, 150)); 
+
+                try {
+                    const canvasEl = await html2canvas(canvas, { 
+                        scale: 2.5,
+                        useCORS: true,
+                        backgroundColor: null, 
+                        logging: false 
+                    });
+                    
+                    const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/jpeg', 0.95));
+                    
+                    const urutan = String(i+1).padStart(3, '0');
+                    const hari = (row['Hari'] || `DayX`).replace(/\s+/g, '');
+                    const tipe = (row['Tipe'] || 'X').toUpperCase();
+                    
+                    let filename = '';
+                    if(tipe === 'Q') {
+                        filename = `${urutan}_${hari}_Pertanyaan.jpg`;
+                    } else if (tipe === 'C' || tipe === 'I') {
+                        filename = `${urutan}_${hari}_Info.jpg`;
+                    } else {
+                        filename = `${urutan}_${hari}_Jawaban.jpg`;
+                    }
+                    
+                    zip.file(filename, blob);
+                    successCount++;
+                    
+                    statusLog.innerHTML = `✅ Rendered: ${filename}\n` + statusLog.innerHTML;
+
+                } catch (err) {
+                    failCount++;
+                    statusLog.innerHTML = `❌ Gagal render baris ${i+1}\n` + statusLog.innerHTML;
+                }
+            }
+
+            if (successCount > 0) {
+                statusLog.innerHTML = `📦 Membuat file ZIP...\n` + statusLog.innerHTML;
+                const content = await zip.generateAsync({type:"blob"});
+                
+                const rangeName = startIndex === endIndex ? uniqueDays[startIndex].replace(/\s+/g, '') : 'Filtered';
+                const zipName = `Ramadan_Stories_${rangeName}.zip`;
+                saveAs(content, zipName);
+                
+                statusLog.innerHTML = `🎉 SELESAI! (${successCount} gambar). File ZIP otomatis terunduh.\n` + statusLog.innerHTML;
+            } else {
+                statusLog.innerHTML = `⚠️ Tidak ada data yang sesuai di rentang hari tersebut.\n` + statusLog.innerHTML;
+            }
+
+            btn.innerText = originalBtnText;
+            btn.disabled = false;
+            isProcessing = false;
+            
+            currentIndex = 0;
+            updateNavUI();
+            renderPreview(csvData[0], 0);
+        }
+    </script>
+</body>
+</html>
